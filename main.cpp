@@ -129,6 +129,13 @@ int main() {
   assert(f.View() == "0.1"sv);
 
   {
+    const double s = 0.1 + 0.2;
+    f.SetValue(s);
+    std::cout << "0.1 + 0.2: " << f.View() << '\n';
+    assert(f.View() == "0.3"sv);
+  }
+
+  {
     double s = 0;
     for (auto _ : std::views::iota(0, 5)) {
       s += 0.1;

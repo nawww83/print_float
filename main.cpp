@@ -9,6 +9,10 @@
 #include <cmath> // std::log10, std::pow
 #include <ranges> // std::views::iota
 #include <algorithm> // std::clamp
+#include <numeric> // std::numeric_limits
+
+static_assert( std::numeric_limits<float>::is_iec559 );
+static_assert( std::numeric_limits<double>::is_iec559 );
 
 // https://habr.com/ru/articles/131977/
 class MakeString {
@@ -41,8 +45,10 @@ static double log10_fast_ankerl(double a) // Практичный логариф
 }
 
 static auto CalcNegativePrecision(std::floating_point auto x) {
-  // Специально подобранное смещение для данного логарифма.
-  const int init_precision = log10_fast_ankerl(x + 1) + (decltype(x))(0.7);
+  x = std::abs(x);
+  const auto offset = (decltype(x))(0.5);
+  const auto threshold = (decltype(x))(10.);
+  const int init_precision = static_cast<int>( offset +  (x < threshold ? log10_fast_ankerl(x + 1) : log10_fast_ankerl(x)) );
   return init_precision + (init_precision < 1 ? 1 : 0);
 }
 
@@ -53,7 +59,7 @@ static auto MyRound(std::floating_point auto x) {
 static int EstimatePrecision(std::floating_point auto x) {
   x = std::abs(x);
   int precision = 0; // Количество знаков после запятой.
-  const int negative_precision = CalcNegativePrecision(x); // Количество знаков перед запятой.
+  const int negative_precision = CalcNegativePrecision(x); // ~Количество знаков перед запятой.
   constexpr auto epsilon = std::numeric_limits<decltype(x)>::epsilon();
   constexpr int max_digits = std::numeric_limits<decltype(x)>::max_digits10;
   auto rounded_x = MyRound(x);
@@ -71,9 +77,8 @@ static int EstimatePrecision(std::floating_point auto x) {
  * Преобразовать число с плавающей запятой в строку.
  */
 static std::string FloatToString(std::floating_point auto x) {
-  const auto original_x = x;
   const int precision = EstimatePrecision(x);
-  return (std::string)(MakeString() << std::fixed << std::setprecision(precision) << original_x);
+  return (std::string)(MakeString() << std::fixed << std::setprecision(precision) << x);
 }
 
 /**
@@ -111,6 +116,13 @@ private:
 
 int main() {
   using namespace std::literals;
+
+  assert(CalcNegativePrecision(0.) == 1);
+  assert(CalcNegativePrecision(1.) == 1);
+  assert(CalcNegativePrecision(10.) == 1);
+  assert(CalcNegativePrecision(33.) == 2);
+  assert(CalcNegativePrecision(99.) == 2);
+  assert(CalcNegativePrecision(100.) == 2);
 
   FloatView f{0.2};
   std::cout << "Double: " << f.View() << '\n';
@@ -182,7 +194,17 @@ int main() {
     }
     f.SetValue(s);
     FloatView g{0.9999};
-    std::cout << "Min viewable summation error: " << f.View() << " vs exact. " << g.View()  << '\n';
+    std::cout << "Min viewable summation error: double: " << f.View() << " vs exact. " << g.View()  << '\n';
+  }
+
+  {
+    float s = 0;
+    for (auto _ : std::views::iota(0, 999)) {
+      s += 0.001f;
+    }
+    f.SetValue(s);
+    FloatView g{0.999f};
+    std::cout << "Min viewable summation error: float: " << f.View() << " vs exact. " << g.View()  << '\n';
   }
 
   {

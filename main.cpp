@@ -9,25 +9,11 @@
 #include <cmath> // std::log10, std::pow
 #include <ranges> // std::views::iota
 #include <algorithm> // std::clamp
-#include <numeric> // std::numeric_limits
+#include <bit> // std::bit_ceil
+#include <stdio.h> // sprintf
 
 static_assert( std::numeric_limits<float>::is_iec559 );
 static_assert( std::numeric_limits<double>::is_iec559 );
-
-// https://habr.com/ru/articles/131977/
-class MakeString {
-public:
-    template<class T>
-    MakeString& operator<<(const T& arg) {
-        m_stream << arg;
-        return *this;
-    }
-    operator std::string() const {
-        return m_stream.str();
-    }
-private:
-    std::stringstream m_stream;
-};
 
 // https://stackoverflow.com/questions/39821367/very-fast-approximate-logarithm-natural-log-function-in-c
 static double log10_fast_ankerl(double a) // Практичный логарифм по основанию 10.
@@ -45,11 +31,11 @@ static double log10_fast_ankerl(double a) // Практичный логариф
 }
 
 static auto CalcNegativePrecision(std::floating_point auto x) {
-  x = std::abs(x);
   const auto offset = (decltype(x))(0.5);
   const auto threshold = (decltype(x))(10.);
-  const int init_precision = static_cast<int>( offset +  (x < threshold ? log10_fast_ankerl(x + 1) : log10_fast_ankerl(x)) );
-  return init_precision + (init_precision < 1 ? 1 : 0);
+  x = std::abs(x);
+  const auto precision = static_cast<int>( offset + log10_fast_ankerl(x + (x < threshold)) );
+  return precision + (precision < 1);
 }
 
 static auto MyRound(std::floating_point auto x) {
@@ -57,28 +43,20 @@ static auto MyRound(std::floating_point auto x) {
 };
 
 static int EstimatePrecision(std::floating_point auto x) {
-  x = std::abs(x);
   int precision = 0; // Количество знаков после запятой.
   const int negative_precision = CalcNegativePrecision(x); // ~Количество знаков перед запятой.
   constexpr auto epsilon = std::numeric_limits<decltype(x)>::epsilon();
   constexpr int max_digits = std::numeric_limits<decltype(x)>::max_digits10;
+  x = std::abs(x);
   auto rounded_x = MyRound(x);
-  auto initial_pow10 = std::pow(10, negative_precision);
-  while (precision < max_digits - negative_precision) {
-      if (std::abs(x - rounded_x) < epsilon * initial_pow10) break;
-      precision++;
-      initial_pow10 *= 10;
-      x -= rounded_x; x *= 10; rounded_x = MyRound(x);
+  auto max_expected_error = std::pow(10, negative_precision) * epsilon;
+  for (; precision < (max_digits - negative_precision); precision++) {
+      if (std::abs(x - rounded_x) < max_expected_error) break;
+      max_expected_error *= 10;
+      x -= rounded_x; x *= 10;
+      rounded_x = MyRound(x);
   }
   return std::clamp(precision, 0, max_digits);
-}
-
-/**
- * Преобразовать число с плавающей запятой в строку.
- */
-static std::string FloatToString(std::floating_point auto x) {
-  const int precision = EstimatePrecision(x);
-  return (std::string)(MakeString() << std::fixed << std::setprecision(precision) << x);
 }
 
 /**
@@ -88,29 +66,79 @@ static std::string FloatToString(std::floating_point auto x) {
 class FloatView {
 public:
   /**
-   * Конструктор.
+   * Конструктор по умолчанию.
    */
-  explicit FloatView(std::floating_point auto x)
-  : mStrValue {FloatToString(x)} {}
+  explicit FloatView() = default;
+
+  /**
+   * Конструктор с параметром.
+   */
+  explicit FloatView(std::floating_point auto x) {
+    FloatToString(x);
+  }
   
   /**
    * Установить новое значение.
    */
   void SetValue(std::floating_point auto x) {
-    mStrValue = FloatToString(x);
+    FloatToString(x);
   }
 
   /**
    * Получить вид на строковое представление числа.
    */
-  std::string_view View() const noexcept {
+  std::string_view View() const {
     return mStrValue;
   }
+
+  /**
+   * Получить точность текущего числа.
+   */
+  int Precision() const {
+    return mPrecision;
+  }
+
 private:
+  /**
+  * Преобразовать число с плавающей запятой в строку.
+  */
+  void FloatToString(std::floating_point auto x) {
+    mPrecision = EstimatePrecision(x);
+    FillStringByNumber(x);
+  }
+
+  /**
+   * Вспомогательная функция заполнения строки числом с плавающей точкой с заданной точностью.
+   */
+  void FillStringByNumber(std::floating_point auto x) {
+    assert(mPrecision >= 0);
+    assert(mPrecision <= std::numeric_limits<decltype(x)>::max_digits10);
+    // 1u - нуль-терминатор, 2u - два возможных знака: "-" и "."
+    char buffer[ std::bit_ceil( 1u + 2u + std::numeric_limits<decltype(x)>::max_digits10 ) ];
+    std::string fmt {"%."};
+    fmt.append( std::to_string( mPrecision ) );
+    if constexpr ( std::is_same_v<float, decltype(x)>) {
+      fmt.append("f");
+    }
+    else if constexpr (std::is_same_v<double, decltype(x)>) {
+      fmt.append("lf");
+    }
+    else if constexpr (std::is_same_v<long double, decltype(x)>) {
+      fmt.append("Lf");
+    }
+    const int printed_size = sprintf(buffer, fmt.c_str(), x);
+    mStrValue.assign(buffer, printed_size);
+  }
+
   /**
    * Строковое представление числа.
    */
   std::string mStrValue;
+
+  /**
+   * Точность числа - количество знаков после запятой.
+   */
+  int mPrecision = 0;
 };
 
 
@@ -138,6 +166,10 @@ int main() {
 
   f.SetValue(0.1f);
   std::cout << "Float: " << f.View() << '\n';
+  assert(f.View() == "0.1"sv);
+
+  f.SetValue(0.1L);
+  std::cout << "Long double: " << f.View() << '\n';
   assert(f.View() == "0.1"sv);
 
   {
@@ -244,14 +276,20 @@ int main() {
   }
 
   {
-    f.SetValue(0.303);
-    std::cout << "Some double: " << f.View() << '\n';
-    assert(f.View() == "0.303"sv);
+    f.SetValue(0.303303f);
+    std::cout << "Some float: " << f.View() << '\n';
+    assert(f.View() == "0.303303"sv);
   }
 
   {
     f.SetValue(0.505050505);
     std::cout << "Some double: " << f.View() << '\n';
+    assert(f.View() == "0.505050505"sv);
+  }
+
+  {
+    f.SetValue(0.505050505L);
+    std::cout << "Some long double: " << f.View() << ", precision: " << f.Precision() << '\n';
     assert(f.View() == "0.505050505"sv);
   }
 

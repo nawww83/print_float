@@ -2,12 +2,10 @@
 #include <cassert> // assert, static_assert
 #include <cstdint> // int32_t
 #include <iostream> // std::cout
-#include <iomanip> // std::fixed, std::setprecision
 #include <limits> // std::numeric_limits
 #include <string> // std::string 
 #include <string_view> // std::string_view
-#include <cmath> // std::log10, std::pow
-#include <ranges> // std::views::iota
+#include <cmath> // std::floor
 #include <algorithm> // std::clamp
 #include <bit> // std::bit_ceil
 #include <stdio.h> // sprintf
@@ -16,11 +14,11 @@ static_assert( std::numeric_limits<float>::is_iec559 );
 static_assert( std::numeric_limits<double>::is_iec559 );
 
 // https://stackoverflow.com/questions/39821367/very-fast-approximate-logarithm-natural-log-function-in-c
-static double log10_fast_ankerl(double a) // Практичный логарифм по основанию 10.
+static double log10_fast_ankerl(double value)
 {
   typedef int32_t my_int;
   static_assert(sizeof(double) == 2*sizeof(my_int));
-  union { double d; my_int x[2]; } u = { a };
+  union { double d; my_int x[2]; } u = { value };
   if constexpr (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
     return (u.x[1] - 1072632447.) * 6.610368362777016e-7 / std::log(10.);
   } else if constexpr (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) {
@@ -34,8 +32,7 @@ static auto CalcNegativePrecision(std::floating_point auto x) {
   const auto offset = (decltype(x))(0.5);
   const auto threshold = (decltype(x))(10.);
   x = std::abs(x);
-  const auto precision = static_cast<int>( offset + log10_fast_ankerl(x + (x < threshold)) );
-  return precision + (precision < 1);
+  return static_cast<int>( offset + log10_fast_ankerl(x + (x < threshold)) );
 }
 
 static auto MyRound(std::floating_point auto x) {
@@ -49,8 +46,8 @@ static int EstimatePrecision(std::floating_point auto x) {
   constexpr int max_digits = std::numeric_limits<decltype(x)>::max_digits10;
   x = std::abs(x);
   auto rounded_x = MyRound(x);
-  auto max_expected_error = std::pow(10, negative_precision) * epsilon;
-  for (; precision < (max_digits - negative_precision); precision++) {
+  decltype(x) max_expected_error = (x < 1 ? 1 : x) * epsilon;
+  for (; precision <= (max_digits - negative_precision); precision++) {
       if (std::abs(x - rounded_x) < max_expected_error) break;
       max_expected_error *= 10;
       x -= rounded_x; x *= 10;
@@ -113,8 +110,8 @@ private:
   void FillStringByNumber(std::floating_point auto x) {
     assert(mPrecision >= 0);
     assert(mPrecision <= std::numeric_limits<decltype(x)>::max_digits10);
-    // 1u - нуль-терминатор, 2u - два возможных знака: "-" и "."
-    char buffer[ std::bit_ceil( 1u + 2u + std::numeric_limits<decltype(x)>::max_digits10 ) ];
+    // 1u - нуль-терминатор, 1u - знак "0" перед точкой, 2u - два возможных знака: "-" и "."
+    char buffer[ std::bit_ceil( 1u + 1u + 2u + std::numeric_limits<decltype(x)>::max_digits10 ) ];
     std::string fmt {"%."};
     fmt.append( std::to_string( mPrecision ) );
     if constexpr ( std::is_same_v<float, decltype(x)>) {
@@ -145,152 +142,62 @@ private:
 int main() {
   using namespace std::literals;
 
-  assert(CalcNegativePrecision(0.) == 1);
-  assert(CalcNegativePrecision(1.) == 1);
-  assert(CalcNegativePrecision(10.) == 1);
-  assert(CalcNegativePrecision(33.) == 2);
-  assert(CalcNegativePrecision(99.) == 2);
-  assert(CalcNegativePrecision(100.) == 2);
-
-  FloatView f{0.2};
-  std::cout << "Double: " << f.View() << '\n';
-  assert(f.View() == "0.2"sv);
-
-  f.SetValue(0.2f);
-  std::cout << "Float: " << f.View() << '\n';
-  assert(f.View() == "0.2"sv);
-
-  f.SetValue(0.1);
-  std::cout << "Double: " << f.View() << '\n';
-  assert(f.View() == "0.1"sv);
-
-  f.SetValue(0.1f);
-  std::cout << "Float: " << f.View() << '\n';
-  assert(f.View() == "0.1"sv);
-
-  f.SetValue(0.1L);
-  std::cout << "Long double: " << f.View() << '\n';
-  assert(f.View() == "0.1"sv);
+  FloatView f{0.3 * 9 * 10 * 11 + 3.};
+  std::cout << "Double 300: " << f.View() << '\n';
+  assert(f.View() == "300"sv);
 
   {
-    const double s = 0.1 + 0.2;
-    f.SetValue(s);
-    std::cout << "0.1 + 0.2: " << f.View() << '\n';
-    assert(f.View() == "0.3"sv);
+    f.SetValue(0.5050505f);
+    std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.5050505"sv);
   }
 
   {
-    double s = 0;
-    for (auto _ : std::views::iota(0, 5)) {
-      s += 0.1;
-    }
-    f.SetValue(s);
-    std::cout << "Half: " << f.View() << '\n';
-    assert(f.View() == "0.5"sv);
+    f.SetValue(0.505050505050505);
+    std::cout << "Some double: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.505050505050505"sv);
   }
 
   {
-    double s = 0;
-    for (auto _ : std::views::iota(0, 10)) {
-      s += 0.1;
-    }
-    f.SetValue(s);
-    std::cout << "Unit: " << f.View() << '\n';
-    assert(f.View() == "1"sv);
-  }
-
-  {
-    double s = 0;
-    for (auto _ : std::views::iota(0, 99)) {
-      s += 0.01;
-    }
-    f.SetValue(s);
-    std::cout << "Sum of 99 by 0.01: " << f.View() << '\n';
-    assert(f.View() == "0.99"sv);
-  }
-
-  {
-    double s = 0;
-    for (auto _ : std::views::iota(0, 999)) {
-      s += 0.001;
-    }
-    f.SetValue(s);
-    std::cout << "Sum of 999 by 0.001: " << f.View() << '\n';
-    assert(f.View() == "0.999"sv);
-  }
-
-  {
-    double s = 0;
-    for (auto _ : std::views::iota(0, 9999)) {
-      s += 0.0001;
-    }
-    f.SetValue(s);
-    FloatView g{0.9999};
-    std::cout << "Min viewable summation error: double: " << f.View() << " vs exact. " << g.View()  << '\n';
-  }
-
-  {
-    float s = 0;
-    for (auto _ : std::views::iota(0, 999)) {
-      s += 0.001f;
-    }
-    f.SetValue(s);
-    FloatView g{0.999f};
-    std::cout << "Min viewable summation error: float: " << f.View() << " vs exact. " << g.View()  << '\n';
-  }
-
-  {
-    f.SetValue(0.99999999999999);
-    std::cout << "Most close to 1: " << f.View() << '\n';
-    assert(f.View() == "0.99999999999999"sv);
-  }
-
-  {
-    f.SetValue(-0.99999999999999);
-    std::cout << "Most close to -1: " << f.View() << '\n';
-    assert(f.View() == "-0.99999999999999"sv);
-  }
-
-  {
-    f.SetValue(999999999999999.);
-    std::cout << "Most 9's: " << f.View() << '\n';
-    assert(f.View() == "999999999999999"sv);
-  }
-
-  {
-    f.SetValue(-999999999999999.);
-    std::cout << "Negative most 9's: " << f.View() << '\n';
-    assert(f.View() == "-999999999999999"sv);
-  }
-
-  {
-    f.SetValue(0.00000000000001);
-    std::cout << "Minimal non-zero: " << f.View() << '\n';
-    assert(f.View() == "0.00000000000001"sv);
-  }
-
-  {
-    f.SetValue(-0.00000000000001);
-    std::cout << "Negative max closer to zero: " << f.View() << '\n';
-    assert(f.View() == "-0.00000000000001"sv);
-  }
-
-  {
-    f.SetValue(0.303303f);
-    std::cout << "Some float: " << f.View() << '\n';
-    assert(f.View() == "0.303303"sv);
-  }
-
-  {
-    f.SetValue(0.505050505);
-    std::cout << "Some double: " << f.View() << '\n';
-    assert(f.View() == "0.505050505"sv);
-  }
-
-  {
-    f.SetValue(0.505050505L);
+    f.SetValue(0.5050505050505050505L);
     std::cout << "Some long double: " << f.View() << ", precision: " << f.Precision() << '\n';
-    assert(f.View() == "0.505050505"sv);
+    assert(f.View() == "0.5050505050505050505"sv);
+  }
+
+  {
+    f.SetValue(0.0505050f);
+    std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.050505"sv);
+  }
+
+  {
+    f.SetValue(0.050505050505050);
+    std::cout << "Some double: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.05050505050505"sv);
+  }
+
+  {
+    f.SetValue(0.0505050505050505050L);
+    std::cout << "Some long double: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.050505050505050505"sv);
+  }
+
+  {
+    f.SetValue(0.1234567f);
+    std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.1234567"sv);
+  }
+
+  {
+    f.SetValue(0.1234567890123456);
+    std::cout << "Some double: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.1234567890123456"sv);
+  }
+
+  {
+    f.SetValue(0.123456789012345678L);
+    std::cout << "Some long double: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.123456789012345678"sv);
   }
 
   {

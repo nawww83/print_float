@@ -43,7 +43,7 @@ static int EstimatePrecision(std::floating_point auto x) {
   int precision = 0; // Количество знаков после запятой.
   const int negative_precision = CalcNegativePrecision(x); // ~Количество знаков перед запятой.
   constexpr auto epsilon = std::numeric_limits<decltype(x)>::epsilon();
-  constexpr int max_digits = std::numeric_limits<decltype(x)>::max_digits10;
+  constexpr int max_digits = std::numeric_limits<decltype(x)>::digits10;
   x = std::abs(x);
   auto rounded_x = MyRound(x);
   decltype(x) max_expected_error = (x < 1 ? 1 : x) * epsilon;
@@ -111,7 +111,7 @@ private:
     assert(mPrecision >= 0);
     assert(mPrecision <= std::numeric_limits<decltype(x)>::max_digits10);
     // 1u - нуль-терминатор, 1u - знак "0" перед точкой, 2u - два возможных знака: "-" и "."
-    char buffer[ std::bit_ceil( 1u + 1u + 2u + std::numeric_limits<decltype(x)>::max_digits10 ) ];
+    char buffer[ std::bit_ceil( 1u + 1u + 2u + std::numeric_limits<decltype(x)>::max_exponent10 ) ];
     std::string fmt {"%."};
     fmt.append( std::to_string( mPrecision ) );
     if constexpr ( std::is_same_v<float, decltype(x)>) {
@@ -147,9 +147,9 @@ int main() {
   assert(f.View() == "300"sv);
 
   {
-    f.SetValue(0.5050505f);
+    f.SetValue(0.50505f);
     std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
-    assert(f.View() == "0.5050505"sv);
+    assert(f.View() == "0.50505"sv);
   }
 
   {
@@ -159,9 +159,9 @@ int main() {
   }
 
   {
-    f.SetValue(0.5050505050505050505L);
+    f.SetValue(0.50505050505050505L);
     std::cout << "Some long double: " << f.View() << ", precision: " << f.Precision() << '\n';
-    assert(f.View() == "0.5050505050505050505"sv);
+    assert(f.View() == "0.50505050505050505"sv);
   }
 
   {
@@ -183,15 +183,15 @@ int main() {
   }
 
   {
-    f.SetValue(0.1234567f);
+    f.SetValue(0.123456f);
     std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
-    assert(f.View() == "0.1234567"sv);
+    assert(f.View() == "0.123456"sv);
   }
 
   {
-    f.SetValue(0.1234567890123456);
+    f.SetValue(0.123456789012345);
     std::cout << "Some double: " << f.View() << ", precision: " << f.Precision() << '\n';
-    assert(f.View() == "0.1234567890123456"sv);
+    assert(f.View() == "0.123456789012345"sv);
   }
 
   {

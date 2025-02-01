@@ -147,6 +147,17 @@ int main() {
   assert(f.View() == "300"sv);
 
   {
+    double x = 0.;
+      for (int i=0; i<22; ++i) {
+          x += 0.3;
+          x *= 2.;
+      }
+      f.SetValue(x);
+      std::cout << "Double sum 2516581.8: " << f.View() << ", precision: " << f.Precision() << '\n';
+      assert(f.View() == "2516581.8"sv);
+  }
+
+  {
     f.SetValue(0.50505f);
     std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
     assert(f.View() == "0.50505"sv);

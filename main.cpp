@@ -16,13 +16,13 @@ static_assert( std::numeric_limits<double>::is_iec559 );
 /**
  * Приближенный логарифм по основанию 10.
  */
-static double log10_abs(double value) {
+static auto log10_abs(std::floating_point auto value) {
     if (!std::isfinite(value)) {
       return value;
     }
     value = std::abs(value);
-    const int deg2 = std::ilogb(value + 1);
-    return std::log(2) * deg2 / std::log(10);
+    const auto deg2 = std::ilogb(value + 1);
+    return std::log(decltype(value)(2)) * deg2 / std::log(decltype(value)(10));
 }
 
 static auto CalcNegativePrecision(std::floating_point auto x) {
@@ -159,6 +159,12 @@ int main() {
   }
 
   {
+    f.SetValue(0.050505f);
+    std::cout << "Some float: " << f.View() << ", precision: " << f.Precision() << '\n';
+    assert(f.View() == "0.050505"sv);
+  }
+
+  {
     f.SetValue(0.505050505050505);
     std::cout << "Some double: " << f.View() << ", precision: " << f.Precision() << '\n';
     assert(f.View() == "0.505050505050505"sv);
@@ -216,6 +222,25 @@ int main() {
     f.SetValue(-0.);
     std::cout << "Negative zero: " << f.View() << '\n';
     assert(f.View() == "-0"sv);
+  }
+
+  {
+    f.SetValue(1.);
+    std::cout << "Unit: " << f.View() << '\n';
+    assert(f.View() == "1"sv);
+  }
+
+  {
+    f.SetValue(1.e19);
+    std::cout << "big integer in double value: " << f.View() << '\n';
+    assert(f.View() == "10000000000000000000"sv);
+  }
+
+  {
+    f.SetValue(std::pow(2., 128)); // Точное представление степеней двойки,
+    // если степень не превышает допустимой экспоненты для данного типа: бонус.
+    std::cout << "big power of 2 in double value: " << f.View() << '\n';
+    assert(f.View() == "340282366920938463463374607431768211456"sv);
   }
 
   {

@@ -7,32 +7,27 @@
 #include <string_view> // std::string_view
 #include <cmath> // std::floor
 #include <algorithm> // std::clamp
-#include <bit> // std::bit_ceil
+#include <bit> // std::bit_ceil, std::bit_width
 #include <stdio.h> // sprintf
 
 static_assert( std::numeric_limits<float>::is_iec559 );
 static_assert( std::numeric_limits<double>::is_iec559 );
 
-// https://stackoverflow.com/questions/39821367/very-fast-approximate-logarithm-natural-log-function-in-c
-static double log10_fast_ankerl(double value)
-{
-  typedef int32_t my_int;
-  static_assert(sizeof(double) == 2*sizeof(my_int));
-  union { double d; my_int x[2]; } u = { value };
-  if constexpr (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
-    return (u.x[1] - 1072632447.) * 6.610368362777016e-7 / std::log(10.);
-  } else if constexpr (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) {
-    return (u.x[0] - 1072632447.) * 6.610368362777016e-7 / std::log(10.);
-  } else {
-    assert((1 == 0) && "Endianess must be either Little or Big.");
-  }
+/**
+ * Приближенный логарифм по основанию 10.
+ */
+static double log10_abs(double value) {
+    if (!std::isfinite(value)) {
+      return value;
+    }
+    value = std::abs(value);
+    const int deg2 = std::ilogb(value + 1);
+    return std::log(2) * deg2 / std::log(10);
 }
 
 static auto CalcNegativePrecision(std::floating_point auto x) {
   const auto offset = (decltype(x))(0.5);
-  const auto threshold = (decltype(x))(10.);
-  x = std::abs(x);
-  return static_cast<int>( offset + log10_fast_ankerl(x + (x < threshold)) );
+  return static_cast<int>( offset + log10_abs(x) );
 }
 
 static auto MyRound(std::floating_point auto x) {
